@@ -129,8 +129,8 @@ def train(model, epochs, data, optimizer, criterion, device):
                             
                 print("Epoch: {}/{}.. ".format(e+1, epochs),
                       "Training Loss: {:.3f}.. ".format(running_loss/print_every),
-                      "Test Loss: {:.3f}.. ".format(test_loss/len(testloader)),
-                      "Test Accuracy: {:.3f}".format(accuracy/len(testloader)),
+                      "Test Loss: {:.3f}.. ".format(test_loss/len(data['testloader'])),
+                      "Test Accuracy: {:.3f}".format(accuracy/len(data['testloader'])),
                       "Runtime: {}".format(datetime.now() - start_ts), )
                 
                 running_loss = 0
