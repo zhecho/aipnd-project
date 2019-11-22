@@ -71,8 +71,8 @@ def load_data(train_dir, valid_dir, test_dir ):
             }
 
 
-# Implement a function for the validation pass
 def validation(model, validloader, criterion):
+    """ Implement a function for the validation pass """
     test_loss = 0
     accuracy = 0
     for images, labels in validloader:
@@ -87,6 +87,27 @@ def validation(model, validloader, criterion):
         accuracy += equality.type(torch.FloatTensor).mean()
     
     return test_loss, accuracy
+
+
+def forward_one(model, image, criterion):
+    """ forward pass for one image """
+    test_loss = 0
+    accuracy = 0
+    for images, labels in validloader:
+
+        # images.resize_(images.shape[0], 784)
+
+        output = model.forward(images)
+        test_loss += criterion(output, labels).item()
+
+        ps = torch.exp(output)
+        equality = (labels.data == ps.max(dim=1)[1])
+        accuracy += equality.type(torch.FloatTensor).mean()
+    
+    return test_loss, accuracy
+
+
+
 
 def train(model, epochs, data, optimizer, criterion, device):
     """ Train NN
@@ -146,7 +167,7 @@ def main(initial_timestamp):
     train_dir = data_dir + '/train'
     valid_dir = data_dir + '/valid'
     test_dir = data_dir + '/test'
-    saved_pth_file = 'flowers_saved_checkpoint.pth'
+    saved_pth_file = 'flowers_saved_vgg11_checkpoint.pth'
     learning_rate = 0.001
     epochs = 1
 
@@ -160,11 +181,11 @@ def main(initial_timestamp):
 
     # Build and traing NN
     #   - Use pretrained network Building and training the classifier
-    model = models.densenet121(pretrained=True)
+    model = models.vgg11(pretrained=True)
     # Freeze parameters so we don't backprop through them
     for param in model.parameters():
         param.requires_grad = False
-    
+    # end 
     classifier = nn.Sequential(OrderedDict([
                               ('fc1', nn.Linear(1024, 500)),
                               ('relu', nn.ReLU()),
