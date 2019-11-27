@@ -146,7 +146,7 @@ def train(model, epochs, data, optimizer, criterion, device):
                 # Turn off gradients for validation, saves memory and computations
                 with torch.no_grad():
                     test_loss, accuracy = validation(
-                            model, data['validloader'], criterion)
+                            model, data['testloader'], criterion)
                             
                 print("Epoch: {}/{}.. ".format(e+1, epochs),
                       "Training Loss: {:.3f}.. ".format(running_loss/print_every),
@@ -160,6 +160,8 @@ def train(model, epochs, data, optimizer, criterion, device):
                 model.train()
     return model
 
+
+
 def main(initial_timestamp):
 
     # Configuration optinos
@@ -168,7 +170,7 @@ def main(initial_timestamp):
     valid_dir = data_dir + '/valid'
     test_dir = data_dir + '/test'
     saved_pth_file = 'flowers_saved_vgg11_checkpoint.pth'
-    learning_rate = 0.001
+    learning_rate = 0.01
     epochs = 1
 
     # Load Data & make Trainsformations
@@ -187,9 +189,10 @@ def main(initial_timestamp):
         param.requires_grad = False
     # end 
     classifier = nn.Sequential(OrderedDict([
-                              ('fc1', nn.Linear(1024, 500)),
+                              # ('fc1', nn.Linear(1024, 500)),
+                              ('fc1', nn.Linear(25088, 1000)),
                               ('relu', nn.ReLU()),
-                              ('fc2', nn.Linear(500, num_of_fw_classes)),
+                              ('fc2', nn.Linear(1000, num_of_fw_classes)),
                               ('output', nn.LogSoftmax(dim=1))
                               ]))
     model.classifier = classifier
