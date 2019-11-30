@@ -93,15 +93,7 @@ def validation(model, validloader, criterion, device):
 
 
 def train(model, epochs, data, optimizer, criterion, device, logger):
-    """ Train NN
-
-    :model: 
-    :epochs: TODO
-    :data: TODO
-    :criterion: TODO
-    :returns: TODO
-
-    """
+    """ Train NN """
     epochs = epochs
     steps = 0
     running_loss = 0
@@ -152,7 +144,52 @@ def check_dir(DIR):
     else:
         return False
 
-def main(args): 
+def label_map(args):
+    """ Returns Label Map """
+    # Label mapping
+    with open(args.category_names, 'r') as f:
+        cat_to_name = json.load(f)
+    num_of_fw_classes = len(cat_to_name.keys())
+    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
+            f'{num_of_fw_classes}')
+    return num_of_fw_classes, cat_to_name
+
+def create_model(args):
+    """ Create Model from pretrained NN
+
+    :args: CLI arguments
+    :returns: model of NN
+
+    """
+    #   - Use pretrained network Building and training the classifier
+    model = models.__dict__[args.arch](pretrained=True)
+    return model
+
+
+def change_classifier(args, model, num_of_fw_classes):
+    """ Change classifier model to number of classes """
+    # Freeze parameters so we don't backprop through them
+    logger.info(f'Freeze parameter of the model.. ')
+    for param in model.parameters():
+        param.requires_grad = False
+    # Change classifier 
+    new_in_features = model.classifier[0].in_features
+    classifier = nn.Sequential(OrderedDict([
+        ('fc1', nn.Linear(new_in_features, 4096)),
+        ('relu1', nn.ReLU()),
+        ('drp1', nn.Dropout(p=0.48)),
+        ('fc2', nn.Linear(4096, args.hidden_units)),
+        ('relu2', nn.ReLU()),
+        ('drp2', nn.Dropout(p=0.52)),
+        ('fc3', nn.Linear(args.hidden_units, num_of_fw_classes)),
+        ('output', nn.LogSoftmax(dim=1))
+        ]))
+    logger.info(f'Change model classifier.. ')
+    model.classifier = classifier
+    return model
+ 
+
+def main(args, logger): 
     """
     Options train.py should have cli arguments 
         python train.py <data_dir> 
@@ -164,14 +201,6 @@ def main(args):
         python train.py --gpu """
 
 
-    # Setting up Logging facility
-    logger = logging.getLogger(__name__)
-    logging.basicConfig(
-            stream = sys.stdout,
-            level = logging.DEBUG,
-            format = '%(asctime)s - %(name)s - %(levelname)s - %(thread)d' +
-            ' - %(message)s',)
-
     # Directory with images
     data_dir = args.data_dir
 
@@ -179,33 +208,16 @@ def main(args):
     valid_dir = data_dir + 'valid'
     test_dir = data_dir + 'test'
 
-
     # Create Model
-    #   - Use pretrained network Building and training the classifier
-    model = models.__dict__[args.arch](pretrained=True)
+    model = create_model(args)
     logger.info(f'Using pre-trained model {args.arch}')
 
-    # Label mapping
-    with open('cat_to_name.json', 'r') as f:
-        cat_to_name = json.load(f)
-    num_of_fw_classes = len(cat_to_name.keys())
-    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
-            f'{num_of_fw_classes}')
+    # Label Mapping
+    num_of_fw_classes, cat_to_name = label_map(args)
 
-    # Freeze parameters so we don't backprop through them
-    logger.info(f'Freeze parameter of the model.. ')
-    for param in model.parameters():
-        param.requires_grad = False
-    # Change classifier 
-    classifier = nn.Sequential(OrderedDict([
-        ('fc1', nn.Linear(25088, args.hidden_units)),
-        ('relu', nn.ReLU()),
-        ('fc2', nn.Linear(args.hidden_units, num_of_fw_classes)),
-        ('output', nn.LogSoftmax(dim=1))
-        ]))
-    logger.info(f'Change model classifier.. ')
-    model.classifier = classifier
- 
+    # Change model classifier for flower classes
+    model = change_classifier(args, model, num_of_fw_classes)
+
     # Check and use Saved model checkpoints dir & files
     # optionally resume from a checkpoint
     check_dir(args.save_dir)
@@ -230,7 +242,6 @@ def main(args):
     data = load_data(train_dir, valid_dir, test_dir, args.batch_size)
     logger.info(f'Load Data from {train_dir}, {valid_dir}, {test_dir} ..done!')
    
-   
     criterion = nn.NLLLoss()
     logger.info(f'Using NLLLoss')
     # Only train the classifier parameters, feature parameters are frozen
@@ -248,14 +259,20 @@ def main(args):
 
     logger.info(f'Start training NN ...')
     # Save the checkpoint and attach class_to_index to the model
-    model = train(model, args.epochs, data, optimizer, criterion, device,
-            logger)
+    model = train(model, args.epochs, data, optimizer, criterion, device, logger)
     torch.save(model.state_dict(), saved_pth_file)
     logger.info(f'Saving NN to file...')
 
-    # TODO: predict.py
-
 if __name__ == '__main__':
+
+    # Setting up Logging facility
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(
+            stream = sys.stdout,
+            level = logging.DEBUG,
+            format = '%(asctime)s - %(name)s - %(levelname)s - %(thread)d' +
+            ' - %(message)s',)
+
     model_names = sorted(name for name in models.__dict__
         if name.islower() and not name.startswith("__")
         and callable(models.__dict__[name]))
@@ -263,22 +280,24 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Image Trainer')
     parser.add_argument('data_dir', metavar='DIR', help='path to dataset')
     parser.add_argument('--save_dir', default='./checkpoints',
-            help='path to saved checkpoint dir')
+            help='path to saved checkpoint dir (default: "./checkpoints" )')
     parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg11',
             choices=model_names, help='model architecture: ' + \
                     ' | '.join(model_names) + ' (default: vgg11)')
     parser.add_argument('--epochs', default=1, type=int, metavar='N',
             help='number of total epochs to run')
+    parser.add_argument('--category_names', default='./cat_to_name.json',
+            help='File with class mapping (default: "./cat_to_name.json"')
     parser.add_argument('--hidden_units', dest='hidden_units', type=int,
-            default=1024, help='Hidden Units')
+            default=1024, help='Hidden Units (default: "1024" )')
     parser.add_argument('-b', '--batch-size', default=64, type=int,
             metavar='N', help='mini-batch size (default: 64)')
-    parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
-            metavar='LR', help='initial learning rate default 0.01')
+    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
+            metavar='LR', help='initial learning rate default 0.001')
     parser.add_argument('--gpu',  help='use GPU', action='store_true') 
 
     args = parser.parse_args()
 
     # Run main
-    sys.exit(main(args=args))
+    sys.exit(main(args=args, logger=logger))
 
