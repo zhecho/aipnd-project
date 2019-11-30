@@ -14,7 +14,7 @@ from collections import OrderedDict
 import os
 
 
-def load_data(train_dir, valid_dir, test_dir ):
+def load_data(train_dir, valid_dir, test_dir, batch_size):
     """ Loading data from directories 
 
     :train_dir: directory with training samples
@@ -56,9 +56,12 @@ def load_data(train_dir, valid_dir, test_dir ):
     test_data = datasets.ImageFolder(test_dir, transform=test_transforms)
     valid_data = datasets.ImageFolder(valid_dir, transform=valid_transforms)
     
-    trainloader = torch.utils.data.DataLoader(train_data, batch_size=64, shuffle=True)
-    testloader = torch.utils.data.DataLoader(test_data, batch_size=64)
-    validloader = torch.utils.data.DataLoader(valid_data, batch_size=64)
+    trainloader = torch.utils.data.DataLoader(train_data,
+            batch_size=batch_size , shuffle=True)
+    testloader = torch.utils.data.DataLoader(test_data,
+            batch_size=batch_size)
+    validloader = torch.utils.data.DataLoader(valid_data,
+            batch_size=batch_size)
 
     return {'train_transforms': train_transforms,
             'test_transforms': test_transforms,
@@ -151,15 +154,14 @@ def check_dir(DIR):
 
 def main(args): 
     """
-    train.py  should have cli arguments 
+    Options train.py should have cli arguments 
         python train.py <data_dir> 
         python train.py --save_dir <save_dir>
         python train.py --arch "vgg13"
         python train.py --learning_rate 0.01
         python train.py --hidden_units 512
         python train.py --epochs 20
-        python train.py --gpu
-    """
+        python train.py --gpu """
 
 
     # Setting up Logging facility
@@ -225,7 +227,7 @@ def main(args):
     logger.info(f'Using {device} for calculations...')
 
     # Load Data & make Trainsformations
-    data = load_data(train_dir, valid_dir, test_dir)
+    data = load_data(train_dir, valid_dir, test_dir, args.batch_size)
     logger.info(f'Load Data from {train_dir}, {valid_dir}, {test_dir} ..done!')
    
    
@@ -268,7 +270,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=1, type=int, metavar='N',
             help='number of total epochs to run')
     parser.add_argument('--hidden_units', dest='hidden_units', type=int,
-            default=1000, help='Hidden Units')
+            default=1024, help='Hidden Units')
     parser.add_argument('-b', '--batch-size', default=64, type=int,
             metavar='N', help='mini-batch size (default: 64)')
     parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
