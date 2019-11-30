@@ -11,8 +11,7 @@ from torch import optim
 import torch.nn.functional as F
 from torchvision import datasets, transforms, models
 from collections import OrderedDict
-from os.path import isfile
-
+import os
 
 def load_data(train_dir, valid_dir, test_dir ):
     """ Loading data from directories 
@@ -72,7 +71,7 @@ def load_data(train_dir, valid_dir, test_dir ):
             }
 
 
-def validation(model, validloader, criterion):
+def validation(model, validloader, criterion, device):
     """ Implement a function for the validation pass """
     test_loss = 0
     accuracy = 0
@@ -89,25 +88,7 @@ def validation(model, validloader, criterion):
     return test_loss, accuracy
 
 
-def forward_one(model, image, criterion):
-    """ forward pass for one image """
-    test_loss = 0
-    accuracy = 0
-    for images, labels in validloader:
-
-        # images.resize_(images.shape[0], 784)
-
-        output = model.forward(images)
-        test_loss += criterion(output, labels).item()
-
-        ps = torch.exp(output)
-        equality = (labels.data == ps.max(dim=1)[1])
-        accuracy += equality.type(torch.FloatTensor).mean()
-    
-    return test_loss, accuracy
-
-
-def train(model, epochs, data, optimizer, criterion, device):
+def train(model, epochs, data, optimizer, criterion, device, logger):
     """ Train NN
 
     :model: 
@@ -144,13 +125,13 @@ def train(model, epochs, data, optimizer, criterion, device):
                 # Turn off gradients for validation, saves memory and computations
                 with torch.no_grad():
                     test_loss, accuracy = validation(
-                            model, data['testloader'], criterion)
+                            model, data['testloader'], criterion, device)
                             
-                print("Epoch: {}/{}.. ".format(e+1, epochs),
-                      "Training Loss: {:.3f}.. ".format(running_loss/print_every),
-                      "Test Loss: {:.3f}.. ".format(test_loss/len(data['testloader'])),
-                      "Test Accuracy: {:.3f}".format(accuracy/len(data['testloader'])),
-                      "Runtime: {}".format(datetime.now() - start_ts), )
+                logger.info(f'Epoch: {e+1}/{epochs}.. ' + \
+                    f'Training Loss: {running_loss/print_every:.3f}.. ' + \
+                    f'Test Loss: {test_loss/len(data["testloader"]):.3f}.. '+\
+                    f'Test Accuracy: {accuracy/len(data["testloader"]):.3f} '+\
+                    f'Runtime: {datetime.now() - start_ts}')
                 
                 running_loss = 0
                 
@@ -158,6 +139,14 @@ def train(model, epochs, data, optimizer, criterion, device):
                 model.train()
     return model
 
+def check_dir(DIR):
+    """ check for existance and make one"""
+    if not os.path.exists(DIR):
+        logger.info('There is no dir: %r I\'ll make one ', DIR)
+        os.makedirs(DIR, mode=0o755)
+        return True
+    else:
+        return False
 
 
 def main(initial_timestamp, args): 
@@ -181,71 +170,88 @@ def main(initial_timestamp, args):
             format = '%(asctime)s - %(name)s - %(levelname)s - %(thread)d' +
             ' - %(message)s',
             )
+
     # Directory with images
     data_dir = args.data_dir
 
-    train_dir = data_dir + '/train'
-    valid_dir = data_dir + '/valid'
-    test_dir = data_dir + '/test'
+    train_dir = data_dir + 'train'
+    valid_dir = data_dir + 'valid'
+    test_dir = data_dir + 'test'
 
-    # Saved model checkpoints dir & files
-    saved_pth_file = args.saved_checkpoint_dir +\
+
+    # Create Model
+    #   - Use pretrained network Building and training the classifier
+    model = models.__dict__[args.arch](pretrained=True)
+    logger.info(f'Using pre-trained model {args.arch}')
+ 
+    # Check and use Saved model checkpoints dir & files
+    # optionally resume from a checkpoint
+    check_dir(args.save_dir)
+    saved_pth_file = args.save_dir +\
             '/flowers_saved_'+ args.arch + '_checkpoint.pth'
-    logger.info('Read Config options from cli!')
+    if os.path.isfile(saved_pth_file):
+        state_dict = torch.load(saved_pth_file)
+        model.load_state_dict(state_dict)
+        logger.info(f'Loading Checkpoint file {saved_pth_file}')
+    else:
+        logger.info(f'Checkpoint file {saved_pth_file} not found..')
+
+    # Use Nvidia chips if exists on the system
+    if args.gpu: 
+        # Check if GPU exist
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    else:
+        device = "cpu"
+    logger.info(f'Using {device.type} for calculations...')
 
     # Load Data & make Trainsformations
     data = load_data(train_dir, valid_dir, test_dir)
     logger.info(f'Load Data from {train_dir}, {valid_dir}, {test_dir} ..done!')
    
-    from IPython.core import debugger; debug = debugger.Pdb().set_trace; debug()
     # Label mapping
     with open('cat_to_name.json', 'r') as f:
         cat_to_name = json.load(f)
     num_of_fw_classes = len(cat_to_name.keys())
+    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
+            f'{num_of_fw_classes}')
 
-    # Build and traing NN
-    #   - Use pretrained network Building and training the classifier
-    model = models.vgg11(pretrained=True)
     # Freeze parameters so we don't backprop through them
+    logger.info(f'Freeze parameter of the model.. ')
     for param in model.parameters():
         param.requires_grad = False
-    # end 
+    # Change classifier 
+    logger.info(f'Change model classifier.. ')
     classifier = nn.Sequential(OrderedDict([
-                              # ('fc1', nn.Linear(1024, 500)),
                               ('fc1', nn.Linear(25088, 1000)),
                               ('relu', nn.ReLU()),
                               ('fc2', nn.Linear(1000, num_of_fw_classes)),
                               ('output', nn.LogSoftmax(dim=1))
                               ]))
     model.classifier = classifier
-    # Use Nvidia chips if exists on the system
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
     criterion = nn.NLLLoss()
+    logger.info(f'Using NLLLoss')
     # Only train the classifier parameters, feature parameters are frozen
     optimizer = optim.Adam(model.classifier.parameters(), lr=args.lr)
+    logger.info(f'Using optimizer {optimizer.__repr__()} ')
     model.to(device)
 
     # Loading checkpoint
     # Check and load saved dict state if file exist
-    if isfile(saved_pth_file):
+    if os.path.isfile(saved_pth_file):
         state_dict = torch.load(saved_pth_file)
         model.load_state_dict(state_dict)
+        logger.info(f'Loading saved model checkpoints from ' + \
+                f'{args.saved_pth_file}')
 
-    # Testing NN - do validation on the test set
-    model = train(model, args.epochs, data, optimizer, criterion, device)
-
+    logger.info(f'Start training NN ...')
     # Save the checkpoint and attach class_to_index to the model
+    model = train(model, args.epochs, data, optimizer, criterion, device,
+            logger)
     torch.save(model.state_dict(), saved_pth_file)
+    logger.info(f'Saving NN to file...')
 
-    # Loading checkpoint
-
-    # Inference for classification 
-
-    # Image Preprocessing
-
-    # Class Prediction
-
-    # Sanity Checking
+    # TODO: predict.py
     print(" --- [{}] --- End Timestamp --- ".format(datetime.now() - initial_timestamp))
 
 
@@ -259,11 +265,12 @@ if __name__ == '__main__':
     # Configuration optinos
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('data_dir', metavar='DIR', help='path to dataset')
-    parser.add_argument('--save_dir', help='path to saved checkpoint dir')
+    parser.add_argument('--save_dir', default='./checkpoints',
+            help='path to saved checkpoint dir')
     parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg11',
-                        choices=model_names,
-                        help='model architecture: ' + ' | '.join(model_names) +
-                            ' (default: vgg11)')
+            choices=model_names, 
+            help='model architecture: ' + ' | '.join(model_names) +\
+                    ' (default: vgg11)')
     parser.add_argument('--epochs', default=1, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('-b', '--batch-size', default=64, type=int,
@@ -274,7 +281,7 @@ if __name__ == '__main__':
                         help='evaluate model on validation set')
     parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                         help='use pre-trained model')
-    parser.add_argument('--gpu', help='use GPU', action='store_true')
+    parser.add_argument('--gpu',  help='use GPU', action='store_true')
     
     cli_args = parser.parse_args()
 
