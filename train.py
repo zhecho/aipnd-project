@@ -13,6 +13,7 @@ from torchvision import datasets, transforms, models
 from collections import OrderedDict
 import os
 
+
 def load_data(train_dir, valid_dir, test_dir ):
     """ Loading data from directories 
 
@@ -148,8 +149,7 @@ def check_dir(DIR):
     else:
         return False
 
-
-def main(initial_timestamp, args): 
+def main(args): 
     """
     train.py  should have cli arguments 
         python train.py <data_dir> 
@@ -159,8 +159,8 @@ def main(initial_timestamp, args):
         python train.py --hidden_units 512
         python train.py --epochs 20
         python train.py --gpu
-
     """
+
 
     # Setting up Logging facility
     logger = logging.getLogger(__name__)
@@ -168,8 +168,7 @@ def main(initial_timestamp, args):
             stream = sys.stdout,
             level = logging.DEBUG,
             format = '%(asctime)s - %(name)s - %(levelname)s - %(thread)d' +
-            ' - %(message)s',
-            )
+            ' - %(message)s',)
 
     # Directory with images
     data_dir = args.data_dir
@@ -183,6 +182,27 @@ def main(initial_timestamp, args):
     #   - Use pretrained network Building and training the classifier
     model = models.__dict__[args.arch](pretrained=True)
     logger.info(f'Using pre-trained model {args.arch}')
+
+    # Label mapping
+    with open('cat_to_name.json', 'r') as f:
+        cat_to_name = json.load(f)
+    num_of_fw_classes = len(cat_to_name.keys())
+    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
+            f'{num_of_fw_classes}')
+
+    # Freeze parameters so we don't backprop through them
+    logger.info(f'Freeze parameter of the model.. ')
+    for param in model.parameters():
+        param.requires_grad = False
+    # Change classifier 
+    classifier = nn.Sequential(OrderedDict([
+        ('fc1', nn.Linear(25088, args.hidden_units)),
+        ('relu', nn.ReLU()),
+        ('fc2', nn.Linear(args.hidden_units, num_of_fw_classes)),
+        ('output', nn.LogSoftmax(dim=1))
+        ]))
+    logger.info(f'Change model classifier.. ')
+    model.classifier = classifier
  
     # Check and use Saved model checkpoints dir & files
     # optionally resume from a checkpoint
@@ -201,34 +221,14 @@ def main(initial_timestamp, args):
         # Check if GPU exist
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     else:
-        device = "cpu"
-    logger.info(f'Using {device.type} for calculations...')
+        device = str("cpu")
+    logger.info(f'Using {device} for calculations...')
 
     # Load Data & make Trainsformations
     data = load_data(train_dir, valid_dir, test_dir)
     logger.info(f'Load Data from {train_dir}, {valid_dir}, {test_dir} ..done!')
    
-    # Label mapping
-    with open('cat_to_name.json', 'r') as f:
-        cat_to_name = json.load(f)
-    num_of_fw_classes = len(cat_to_name.keys())
-    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
-            f'{num_of_fw_classes}')
-
-    # Freeze parameters so we don't backprop through them
-    logger.info(f'Freeze parameter of the model.. ')
-    for param in model.parameters():
-        param.requires_grad = False
-    # Change classifier 
-    logger.info(f'Change model classifier.. ')
-    classifier = nn.Sequential(OrderedDict([
-                              ('fc1', nn.Linear(25088, 1000)),
-                              ('relu', nn.ReLU()),
-                              ('fc2', nn.Linear(1000, num_of_fw_classes)),
-                              ('output', nn.LogSoftmax(dim=1))
-                              ]))
-    model.classifier = classifier
-    
+   
     criterion = nn.NLLLoss()
     logger.info(f'Using NLLLoss')
     # Only train the classifier parameters, feature parameters are frozen
@@ -242,7 +242,7 @@ def main(initial_timestamp, args):
         state_dict = torch.load(saved_pth_file)
         model.load_state_dict(state_dict)
         logger.info(f'Loading saved model checkpoints from ' + \
-                f'{args.saved_pth_file}')
+                f'{saved_pth_file}')
 
     logger.info(f'Start training NN ...')
     # Save the checkpoint and attach class_to_index to the model
@@ -252,38 +252,31 @@ def main(initial_timestamp, args):
     logger.info(f'Saving NN to file...')
 
     # TODO: predict.py
-    print(" --- [{}] --- End Timestamp --- ".format(datetime.now() - initial_timestamp))
-
 
 if __name__ == '__main__':
-    # Start timesamp
-    initial_timestamp = datetime.now()
-    print(" --- [{}] --- Start Timestamp --- ".format(initial_timestamp))
     model_names = sorted(name for name in models.__dict__
         if name.islower() and not name.startswith("__")
         and callable(models.__dict__[name]))
     # Configuration optinos
-    parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+    parser = argparse.ArgumentParser(description='PyTorch Image Trainer')
     parser.add_argument('data_dir', metavar='DIR', help='path to dataset')
     parser.add_argument('--save_dir', default='./checkpoints',
             help='path to saved checkpoint dir')
     parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg11',
-            choices=model_names, 
-            help='model architecture: ' + ' | '.join(model_names) +\
-                    ' (default: vgg11)')
+            choices=model_names, help='model architecture: ' + \
+                    ' | '.join(model_names) + ' (default: vgg11)')
     parser.add_argument('--epochs', default=1, type=int, metavar='N',
-                        help='number of total epochs to run')
+            help='number of total epochs to run')
+    parser.add_argument('--hidden_units', dest='hidden_units', type=int,
+            default=1000, help='Hidden Units')
     parser.add_argument('-b', '--batch-size', default=64, type=int,
-                        metavar='N', help='mini-batch size (default: 64)')
+            metavar='N', help='mini-batch size (default: 64)')
     parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
-                        metavar='LR', help='initial learning rate default 0.01')
-    parser.add_argument('--hidden_units', dest='hidden units',
-                        help='evaluate model on validation set')
-    parser.add_argument('--pretrained', dest='pretrained', action='store_true',
-                        help='use pre-trained model')
-    parser.add_argument('--gpu',  help='use GPU', action='store_true')
-    
-    cli_args = parser.parse_args()
+            metavar='LR', help='initial learning rate default 0.01')
+    parser.add_argument('--gpu',  help='use GPU', action='store_true') 
 
-    sys.exit(main(initial_timestamp, cli_args))
+    args = parser.parse_args()
+
+    # Run main
+    sys.exit(main(args=args))
 
