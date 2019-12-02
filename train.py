@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
-import argparse
-# import logging
+import argparse, logging
 # import json, time, sys
 # from datetime import datetime
 import torch
