@@ -44,18 +44,6 @@ def main(args, logger):
     # Change model classifier for flower classes
     model = change_classifier(args, model, num_of_fw_classes)
 
-    
-    # Check and use Saved model checkpoints dir & files
-    # optionally resume from a checkpoint
-    check_dir(args.save_dir)
-    saved_pth_file = args.save_dir +\
-            '/flowers_saved_'+ args.arch + '_checkpoint.pth'
-    if os.path.isfile(saved_pth_file):
-        model = load_model(args, saved_pth_file, num_of_fw_classes)
-        logger.info(f'Loading Checkpoint file {saved_pth_file}')
-    else:
-        logger.info(f'Checkpoint file {saved_pth_file} not found..')
-
     # Use Nvidia chips if exists on the system
     if args.gpu: 
         # Check if GPU exist
@@ -63,6 +51,18 @@ def main(args, logger):
     else:
         device = str("cpu")
     logger.info(f'Using {device} for calculations...')
+    
+    # Check and use Saved model checkpoints dir & files
+    # optionally resume from a checkpoint
+    check_dir(args.save_dir)
+    saved_pth_file = args.save_dir +\
+            '/flowers_saved_'+ args.arch + '_' + device + '_checkpoint.pth'
+    if os.path.isfile(saved_pth_file):
+        model = load_model(args, saved_pth_file, num_of_fw_classes)
+        logger.info(f'Loading Checkpoint file {saved_pth_file}')
+    else:
+        logger.info(f'Checkpoint file {saved_pth_file} not found..')
+
 
     # Load Data & make Trainsformations
     data = load_data(train_dir, valid_dir, test_dir, args.batch_size)
