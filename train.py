@@ -56,7 +56,7 @@ def main(args, logger):
     # optionally resume from a checkpoint
     check_dir(args.save_dir)
     saved_pth_file = args.save_dir +\
-            '/flowers_saved_'+ args.arch + '_' + device + '_checkpoint.pth'
+            '/flowers_saved_'+ args.arch + '_' + str(device) + '_checkpoint.pth'
     if os.path.isfile(saved_pth_file):
         model = load_model(args, saved_pth_file, num_of_fw_classes)
         logger.info(f'Loading Checkpoint file {saved_pth_file}')
@@ -78,14 +78,6 @@ def main(args, logger):
     optimizer = optim.Adam(model.classifier.parameters(), lr=args.lr)
     logger.info(f'Using optimizer {optimizer.__repr__()} ')
     model.to(device)
-
-    # Loading checkpoint
-    # Check and load saved dict state if file exist
-    if os.path.isfile(saved_pth_file):
-        state_dict = torch.load(saved_pth_file)
-        model.load_state_dict(state_dict)
-        logger.info(f'Loading saved model checkpoints from ' + \
-                f'{saved_pth_file}')
 
     logger.info(f'Start training NN ...')
     # Save the checkpoint and attach class_to_index to the model
