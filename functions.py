@@ -179,7 +179,14 @@ def change_classifier(args, model, num_of_fw_classes):
     for param in model.parameters():
         param.requires_grad = False
     # Change classifier 
-    new_in_features = model.classifier[0].in_features
+    # new_in_features = model.classifier[0].in_features
+    new_in_features = int()
+    for seq in model.classifier:
+        # print(f' {seq}, type -> {type(seq)}')
+        if type(seq) == torch.nn.modules.linear.Linear:
+            new_in_features = seq.in_features
+            break
+
     classifier = nn.Sequential(OrderedDict([
         ('fc1', nn.Linear(new_in_features, 4096)),
         ('relu1', nn.ReLU()),
