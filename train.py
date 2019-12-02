@@ -3,7 +3,6 @@
 import argparse
 import logging
 import json, time, sys
-import matplotlib.pyplot as plt
 from datetime import datetime
 import torch
 from torch import nn
@@ -150,8 +149,6 @@ def label_map(args):
     with open(args.category_names, 'r') as f:
         cat_to_name = json.load(f)
     num_of_fw_classes = len(cat_to_name.keys())
-    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
-            f'{num_of_fw_classes}')
     return num_of_fw_classes, cat_to_name
 
 def create_model(args):
@@ -161,12 +158,19 @@ def create_model(args):
     :returns: model of NN
 
     """
-    #   - Use pretrained network Building and training the classifier
     model = models.__dict__[args.arch](pretrained=True)
     return model
 
+def load_model(args, checkpoint_file, num_of_fw_classes, logger):
+    ''' load checkpoint for args.arch ''' 
+    ch_points = torch.load(checkpoint_file)
+    model = models.__dict__[args.arch](pretrained=True)
+    # model.class_to_idx = ch_points['class_to_idx']
+    model = change_classifier(args, model, num_of_fw_classes, logger) 
+    model.load_state_dict(ch_points)
+    return model
 
-def change_classifier(args, model, num_of_fw_classes):
+def change_classifier(args, model, num_of_fw_classes, logger):
     """ Change classifier model to number of classes """
     # Freeze parameters so we don't backprop through them
     logger.info(f'Freeze parameter of the model.. ')
@@ -214,9 +218,10 @@ def main(args, logger):
 
     # Label Mapping
     num_of_fw_classes, cat_to_name = label_map(args)
-
+    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
+            f'{num_of_fw_classes}')
     # Change model classifier for flower classes
-    model = change_classifier(args, model, num_of_fw_classes)
+    model = change_classifier(args, model, num_of_fw_classes, logger)
 
     # Check and use Saved model checkpoints dir & files
     # optionally resume from a checkpoint
@@ -224,8 +229,7 @@ def main(args, logger):
     saved_pth_file = args.save_dir +\
             '/flowers_saved_'+ args.arch + '_checkpoint.pth'
     if os.path.isfile(saved_pth_file):
-        state_dict = torch.load(saved_pth_file)
-        model.load_state_dict(state_dict)
+        model = load_model(args, saved_pth_file, num_of_fw_classes, logger)
         logger.info(f'Loading Checkpoint file {saved_pth_file}')
     else:
         logger.info(f'Checkpoint file {saved_pth_file} not found..')

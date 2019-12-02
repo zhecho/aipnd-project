@@ -12,16 +12,38 @@ from collections import OrderedDict
 from PIL import Image
 import seaborn as sb                                     
 
-from train import create_model, check_dir
+from train import ( create_model, check_dir, load_model, label_map)
 
-def predict(image_path, model, topk, gpu):
+
+def process_image(image):
+    ''' Scales, crops, and t a PIL image for a PyTorch model, returns an Numpty
+    array '''
+    # Load, resize, crop image
+    img = Image.open(image)
+    img = img.resize((256,256))
+    img = img.crop((16,16,240,240))
+    
+    # to numpy array
+    img = np.asarray(img)/255
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    
+    img = (img - mean)/std
+    #  
+    img_t = img.transpose((2,0,1))
+    # convert to tensor
+    return torch.from_numpy(img_t)
+
+
+
+def predict(args, model):
     ''' Predict the class (or classes) of an image using a trained deep
     learning model.  '''
         
      # Process image
-    img = process_image(image_path)
+    img = process_image(args.i)
    
-    if gpu:
+    if args.gpu:
         img = img.type(torch.gpu.FloatTensor)
     else:
         img = img.type(torch.FloatTensor)
@@ -31,7 +53,7 @@ def predict(image_path, model, topk, gpu):
     probs = torch.exp(model.forward(model_input))
     
     # Top probs
-    hi_probabilities, hi_probabilities_idx = probs.topk(topk)
+    hi_probabilities, hi_probabilities_idx = probs.topk(args.topk)
     hi_probabilities = hi_probabilities.detach().numpy().tolist()[0] 
     hi_probabilities_idx = hi_probabilities_idx.detach().numpy().tolist()[0]
     
@@ -56,23 +78,31 @@ def main(args, logger):
     # Create Model
     model = create_model(args)
 
+    # Label Mapping
+    num_of_fw_classes, cat_to_name = label_map(args)
+    logger.info(f'Read json file for Label mapping. Number of classes: ' +\
+            f'{num_of_fw_classes}')
+   
+    # Check and load saved checkpoint file 
     check_dir(args.save_dir)
     saved_pth_file = args.save_dir +\
             '/flowers_saved_'+ args.arch + '_checkpoint.pth'
     if os.path.isfile(saved_pth_file):
-        state_dict = torch.load(saved_pth_file)
-        model.load_state_dict(state_dict)
+        model = load_model(args, saved_pth_file, num_of_fw_classes, logger)
         logger.info(f'Loading Checkpoint file {saved_pth_file}')
     else:
         logger.error(f'Checkpoint file {saved_pth_file} not found..')
         sys.exit()
 
     # Prediction
-    probs, labs, flowers = predict(image_path, model) 
+    probs, labs, flowers = predict(args, model) 
+    logger.info(f'Prediction: \n Probs: {probs} ' + \
+            f'Labels: {labs} \n' + \
+            f'Flowers: {flowers}')
 
-    
 
 if __name__ == '__main__':
+
     # Setting up Logging facility
     logger = logging.getLogger(__name__)
     logging.basicConfig(
@@ -86,7 +116,7 @@ if __name__ == '__main__':
         and callable(models.__dict__[name]))
     # Configuration optinos
     parser = argparse.ArgumentParser(description='PyTorch Image Trainer')
-    parser.add_argument('-i', metavar='image_path', help='path to image file')
+    parser.add_argument('-i', metavar='PATH', help='path to image file'),
     parser.add_argument('--save_dir', default='./checkpoints',
             help='path to saved checkpoint dir')
     parser.add_argument('--category_names', default='./cat_to_name.json',
@@ -98,7 +128,7 @@ if __name__ == '__main__':
             help='top k classes ')
     parser.add_argument('--hidden_units', dest='hidden_units', type=int,
             default=1024, help='Hidden Units')
-    parser.add_argument('--gpu',  help='use GPU') 
+    parser.add_argument('--gpu', help='use GPU') 
 
     args = parser.parse_args()
 
