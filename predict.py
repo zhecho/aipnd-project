@@ -1,19 +1,24 @@
 #!/usr/bin/env python
 # coding: utf-8
-import argparse
-import json, time, os, sys, logging
-from datetime import datetime
-import torch
-from torch import nn
-from torch import optim
-import torch.nn.functional as F
-from torchvision import datasets, transforms, models
-from collections import OrderedDict
-from PIL import Image
-import seaborn as sb                                     
+# import argparse
+# import json, time, os, sys, logging
+# from datetime import datetime
+# import torch
+# from torch import nn
+# from torch import optim
+# import torch.nn.functional as F
+# from torchvision import datasets, transforms, models
+# from collections import OrderedDict
+# from PIL import Image
+# import seaborn as sb                                     
+# import numpy as np
 
-from train import ( create_model, check_dir, load_model, label_map)
+from functions import (
+        create_model, load_model, label_map, check_dir, 
+        )
 
+
+logger = logging.getLogger(__name__)
 
 def process_image(image):
     ''' Scales, crops, and t a PIL image for a PyTorch model, returns an Numpty
@@ -53,7 +58,7 @@ def predict(args, model):
     probs = torch.exp(model.forward(model_input))
     
     # Top probs
-    hi_probabilities, hi_probabilities_idx = probs.topk(args.topk)
+    hi_probabilities, hi_probabilities_idx = probs.topk(args.top_k)
     hi_probabilities = hi_probabilities.detach().numpy().tolist()[0] 
     hi_probabilities_idx = hi_probabilities_idx.detach().numpy().tolist()[0]
     
@@ -67,7 +72,7 @@ def predict(args, model):
     return hi_probabilities, labels, flowers   
     
 
-def main(args, logger):
+def main(args):
     """ CLI args to predict.py  
         python predict.py -i <path_to_image> 
         python predict.py --category_names <cat_to_name.json>
@@ -83,6 +88,9 @@ def main(args, logger):
     logger.info(f'Read json file for Label mapping. Number of classes: ' +\
             f'{num_of_fw_classes}')
    
+    # Adding class_to_idx in the model
+    # model.class_to_idx = data['train_data'].class_to_idx
+
     # Check and load saved checkpoint file 
     check_dir(args.save_dir)
     saved_pth_file = args.save_dir +\
@@ -104,7 +112,6 @@ def main(args, logger):
 if __name__ == '__main__':
 
     # Setting up Logging facility
-    logger = logging.getLogger(__name__)
     logging.basicConfig(
             stream = sys.stdout,
             level = logging.DEBUG,
@@ -116,7 +123,8 @@ if __name__ == '__main__':
         and callable(models.__dict__[name]))
     # Configuration optinos
     parser = argparse.ArgumentParser(description='PyTorch Image Trainer')
-    parser.add_argument('-i', metavar='PATH', help='path to image file'),
+    parser.add_argument('-i', metavar='PATH',
+            help='path to image file', required=True),
     parser.add_argument('--save_dir', default='./checkpoints',
             help='path to saved checkpoint dir')
     parser.add_argument('--category_names', default='./cat_to_name.json',
@@ -128,10 +136,10 @@ if __name__ == '__main__':
             help='top k classes ')
     parser.add_argument('--hidden_units', dest='hidden_units', type=int,
             default=1024, help='Hidden Units')
-    parser.add_argument('--gpu', help='use GPU') 
+    parser.add_argument('--gpu', default=False, help='enable gpu support') 
 
     args = parser.parse_args()
 
     # Run main
-    sys.exit(main(args=args, logger=logger))
+    sys.exit(main(args=args))
 
