@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import argparse, logging, sys
+import os, argparse, logging, sys
 # import json, time, os, sys, logging
 # from datetime import datetime
-# import torch
+import torch
 # from torch import nn
 # from torch import optim
 # import torch.nn.functional as F
-# from torchvision import datasets, transforms, models
+from torchvision import datasets, transforms, models
 # from collections import OrderedDict
-# from PIL import Image
+from PIL import Image
 # import seaborn as sb                                     
-# import numpy as np
+import numpy as np
 
 from functions import (
         create_model, load_model, label_map, check_dir, 
@@ -97,7 +97,7 @@ def main(args):
     saved_pth_file = args.save_dir +\
             '/flowers_saved_'+ args.arch + '_checkpoint.pth'
     if os.path.isfile(saved_pth_file):
-        model = load_model(args, saved_pth_file, num_of_fw_classes, logger)
+        model = load_model(args, saved_pth_file, num_of_fw_classes)
         logger.info(f'Loading Checkpoint file {saved_pth_file}')
     else:
         logger.error(f'Checkpoint file {saved_pth_file} not found..')
