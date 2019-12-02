@@ -7,7 +7,7 @@ from torch import optim
 from torchvision import datasets, transforms, models
 
 from functions import (
-        create_model, load_model, label_map, check_dir, 
+        create_model, load_model, label_map, check_dir, load_data,
         validation, train, change_classifier
         )
 
