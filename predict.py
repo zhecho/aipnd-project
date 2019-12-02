@@ -1,21 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
-
 import os, argparse, logging, sys
-# import json, time, os, sys, logging
-# from datetime import datetime
 import torch
-# from torch import nn
-# from torch import optim
-# import torch.nn.functional as F
 from torchvision import datasets, transforms, models
-# from collections import OrderedDict
 from PIL import Image
-# import seaborn as sb                                     
 import numpy as np
 
 from functions import (
-        create_model, load_model, label_map, check_dir, 
+        create_model, load_model, label_map, check_dir, load_data
         )
 
 
@@ -68,7 +60,7 @@ def predict(args, model):
     
     labels = [idx_to_class[idx] for idx in hi_probabilities_idx]
     
-    flowers = [cat_to_name[idx_to_class[lab]] for lab in hi_probabilities_idx]
+    flowers = [model.cat_to_name[idx_to_class[lab]] for lab in hi_probabilities_idx]
     
     return hi_probabilities, labels, flowers   
     
@@ -93,15 +85,31 @@ def main(args):
     # model.class_to_idx = data['train_data'].class_to_idx
 
     # Check and load saved checkpoint file 
+    # we need device str() in order to choose checkpoint file
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     check_dir(args.save_dir)
     saved_pth_file = args.save_dir +\
-            '/flowers_saved_'+ args.arch + '_checkpoint.pth'
+            '/flowers_saved_'+ args.arch + '_' + str(device) + '_checkpoint.pth'
+
     if os.path.isfile(saved_pth_file):
         model = load_model(args, saved_pth_file, num_of_fw_classes)
         logger.info(f'Loading Checkpoint file {saved_pth_file}')
     else:
         logger.error(f'Checkpoint file {saved_pth_file} not found..')
         sys.exit()
+
+    # Adding class_to_idx in the model
+    # Directory with images
+    data_dir = args.data_dir
+    train_dir = data_dir + 'train'
+    valid_dir = data_dir + 'valid'
+    test_dir = data_dir + 'test'
+
+    # Load Data & make Trainsformations
+    data = load_data(train_dir, valid_dir, test_dir, args.batch_size)
+    logger.info(f'Load Data from {train_dir}, {valid_dir}, {test_dir} ..done!')
+    model.class_to_idx = data['train_data'].class_to_idx
+    model.cat_to_name = cat_to_name
 
     # Prediction
     probs, labs, flowers = predict(args, model) 
@@ -126,6 +134,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Image Trainer')
     parser.add_argument('-i', metavar='PATH',
             help='path to image file', required=True),
+    parser.add_argument('data_dir', metavar='DIR', help='path to dataset')
     parser.add_argument('--save_dir', default='./checkpoints',
             help='path to saved checkpoint dir')
     parser.add_argument('--category_names', default='./cat_to_name.json',
@@ -138,6 +147,8 @@ if __name__ == '__main__':
     parser.add_argument('--hidden_units', dest='hidden_units', type=int,
             default=1024, help='Hidden Units')
     parser.add_argument('--gpu', default=False, help='enable gpu support') 
+    parser.add_argument('-b', '--batch-size', default=64, type=int,
+            metavar='N', help='mini-batch size (default: 64)')
 
     args = parser.parse_args()
 
