@@ -1,16 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
-import argparse, logging
-# import json, time, sys
-# from datetime import datetime
+import argparse, logging, sys, os
 import torch
 from torch import nn
 from torch import optim
-# import torch.nn.functional as F
-# from torchvision import datasets, transforms, models
-# from collections import OrderedDict
-import os
-
+from torchvision import datasets, transforms, models
 
 from functions import (
         create_model, load_model, label_map, check_dir, 
