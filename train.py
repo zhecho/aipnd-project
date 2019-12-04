@@ -41,8 +41,6 @@ def main(args, logger):
     num_of_fw_classes, cat_to_name = label_map(args)
     logger.info(f'Read json file for Label mapping. Number of classes: ' +\
             f'{num_of_fw_classes}')
-    # Change model classifier for flower classes
-    model = change_classifier(args, model, num_of_fw_classes)
 
     # Use Nvidia chips if exists on the system
     if args.gpu: 
@@ -58,11 +56,10 @@ def main(args, logger):
     saved_pth_file = args.save_dir +\
             '/flowers_saved_'+ args.arch + '_' + str(device) + '_checkpoint.pth'
     if os.path.isfile(saved_pth_file):
-        model = load_model(args, saved_pth_file, num_of_fw_classes)
+        model = load_model(saved_pth_file)
         logger.info(f'Loading Checkpoint file {saved_pth_file}')
     else:
         logger.info(f'Checkpoint file {saved_pth_file} not found..')
-
 
     # Load Data & make Trainsformations
     data = load_data(train_dir, valid_dir, test_dir, args.batch_size)
@@ -70,6 +67,14 @@ def main(args, logger):
    
     # Adding class_to_idx in the model
     model.class_to_idx = data['train_data'].class_to_idx
+    # Change model classifier for flower classes
+    checkpoint_dict = {
+        'weights': model.state_dict(),
+        'model_name': args.arch,
+        'hidden_units': args.hidden_units,
+        'output_units': num_of_fw_classes,
+        'class_to_idx': model.class_to_idx }
+    model = change_classifier(model, checkpoint_dict)
 
     # Loss
     criterion = nn.NLLLoss()
@@ -80,9 +85,18 @@ def main(args, logger):
     model.to(device)
 
     logger.info(f'Start training NN ...')
-    # Save the checkpoint and attach class_to_index to the model
     model = train(model, args.epochs, data, optimizer, criterion, device, logger)
-    torch.save(model.state_dict(), saved_pth_file)
+    # Save the checkpoint and attach class_to_index to the model
+    logger.info(f'Save model with some extra options')
+    checkpoint_dict = {
+            'weights': model.state_dict(),
+            'model_name': args.arch,
+            'hidden_units': args.hidden_units,
+            'output_units': num_of_fw_classes,
+            'class_to_idx': model.class_to_idx }
+    torch.save(checkpoint_dict, saved_pth_file)
+
+    # torch.save(model.state_dict(), saved_pth_file)
     logger.info(f'Saving NN to file...')
 
 if __name__ == '__main__':
@@ -97,14 +111,21 @@ if __name__ == '__main__':
     model_names = sorted(name for name in models.__dict__
         if name.islower() and not name.startswith("__")
         and callable(models.__dict__[name]))
+
+    supported_nets = list()
+    for net in model_names:
+        # Filter out only supported networks 
+        if net.startswith(('vgg','densenet','resnet','alexnet')):
+            supported_nets.append(net)
+
     # Configuration optinos
     parser = argparse.ArgumentParser(description='PyTorch Image Trainer')
     parser.add_argument('data_dir', metavar='DIR', help='path to dataset')
     parser.add_argument('--save_dir', default='./checkpoints',
             help='path to saved checkpoint dir (default: "./checkpoints" )')
     parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg11',
-            choices=model_names, help='model architecture: ' + \
-                    ' | '.join(model_names) + ' (default: vgg11)')
+            choices=supported_nets, help='model architecture: ' + \
+                    ' | '.join(supported_nets) + ' (default: vgg11)')
     parser.add_argument('--epochs', default=1, type=int, metavar='N',
             help='number of total epochs to run')
     parser.add_argument('--category_names', default='./cat_to_name.json',

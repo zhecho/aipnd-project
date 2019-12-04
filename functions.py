@@ -11,6 +11,7 @@ from collections import OrderedDict
 from PIL import Image
 import seaborn as sb                                     
 import numpy as np
+from PIL import Image
 
 
 logger = logging.getLogger(__name__)
@@ -69,8 +70,8 @@ def load_data(train_dir, valid_dir, test_dir, batch_size):
             'test_transforms': test_transforms,
             'valid_transforms': valid_transforms,
             'train_data':   train_data,
-            'test_data':   train_data,
-            'valid_data':   train_data,
+            'test_data':   test_data,
+            'valid_data':   valid_data,
             'trainloader':  trainloader,
             'testloader': testloader,
             'validloader':  validloader,
@@ -164,40 +165,132 @@ def create_model(args):
     model = models.__dict__[args.arch](pretrained=True)
     return model
 
-def load_model(args, checkpoint_file, num_of_fw_classes):
-    ''' load checkpoint for args.arch ''' 
-    ch_points = torch.load(checkpoint_file)
-    model = models.__dict__[args.arch](pretrained=True)
-    model = change_classifier(args, model, num_of_fw_classes) 
-    model.load_state_dict(ch_points)
+def load_model(checkpoint_file):
+    ''' load from checkpoint file saved like this:
+        checkpoint_dict = {
+                'weights': model.state_dict(),
+                'model_name': args.arch,
+                'hidden_units': args.hidden_units,
+                'output_units': num_of_fw_classes,
+                'class_to_idx': model.class_to_idx }
+        torch.save(checkpoint_dict, saved_pth_file)
+    ''' 
+    checkpoint_dict = torch.load(checkpoint_file)
+    model = getattr(models, checkpoint_dict['model_name'])(pretrained=True)
+    model = change_classifier(model, checkpoint_dict) 
+    model.load_state_dict(checkpoint_dict['weights'])
     return model
 
-def change_classifier(args, model, num_of_fw_classes):
-    """ Change classifier model to number of classes """
-    # Freeze parameters so we don't backprop through them
+def change_classifier(model, checkpoint_dict):
+    """ Change classifier model to number of classes
+        Supported nets starts with 'vgg','densenet','resnet','alexnet'
+    """
     logger.info(f'Freeze parameter of the model.. ')
     for param in model.parameters():
         param.requires_grad = False
+
     # Change classifier 
     # new_in_features = model.classifier[0].in_features
     new_in_features = int()
-    for seq in model.classifier:
-        # print(f' {seq}, type -> {type(seq)}')
-        if type(seq) == torch.nn.modules.linear.Linear:
-            new_in_features = seq.in_features
-            break
+    if checkpoint_dict['model_name'].startswith(('vgg','alexnet')):
+        for seq in model.classifier:
+            # print(f' {seq}, type -> {type(seq)}')
+            if type(seq) == torch.nn.modules.linear.Linear:
+                new_in_features = seq.in_features
+                break
+    elif checkpoint_dict['model_name'].startswith('densenet'):
+        new_in_features = model.classifier.in_features
+    elif checkpoint_dict['model_name'].startswith('resnet'):
+        new_in_features = model.fc.in_features
 
     classifier = nn.Sequential(OrderedDict([
         ('fc1', nn.Linear(new_in_features, 4096)),
         ('relu1', nn.ReLU()),
         ('drp1', nn.Dropout(p=0.48)),
-        ('fc2', nn.Linear(4096, args.hidden_units)),
+        ('fc2', nn.Linear(4096, checkpoint_dict['hidden_units'])),
         ('relu2', nn.ReLU()),
         ('drp2', nn.Dropout(p=0.52)),
-        ('fc3', nn.Linear(args.hidden_units, num_of_fw_classes)),
+        ('fc3', nn.Linear(checkpoint_dict['hidden_units'],
+            checkpoint_dict['output_units'])),
         ('output', nn.LogSoftmax(dim=1))
         ]))
     logger.info(f'Change model classifier.. ')
-    model.classifier = classifier
+    
+    if checkpoint_dict['model_name'].startswith(('vgg','densenet','alexnet')):
+        model.classifier = classifier
+    elif checkpoint_dict['model_name'].startswith('resnet'):
+        model.fc = classifier
     return model
  
+
+def process_image(image):
+    ''' Scales, crops, and t a PIL image for a PyTorch model, returns an Numpty
+    array '''
+
+    img = Image.open(image)
+    '''Get the dimensions of the image'''
+    width, height = img.size
+    
+    '''Resize by keeping the aspect ratio, but changing the dimension
+    so the shortest size is 256px'''
+    img = img.resize(
+            (256, int(256*(height/width))) if width < height else
+            (int(256*(width/height)), 256)
+            )
+    
+    '''Get the dimensions of the new image size'''
+    width, height = img.size
+    
+    '''Set the coordinates to do a center crop of 224 x 224'''
+    left = (width - 224)/2
+    top = (height - 224)/2
+    right = (width + 224)/2
+    bottom = (height + 224)/2
+    img = img.crop((left, top, right, bottom))
+
+    # img = img.resize((256,256))
+    # img = img.crop((16,16,240,240))
+    
+    # to numpy array
+    img = np.asarray(img)/255
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    
+    img = (img - mean)/std
+    #  
+    img_t = img.transpose((2,0,1))
+    # convert to tensor
+    return torch.from_numpy(img_t)
+
+def predict(args, model):
+    ''' Predict the class (or classes) of an image using a trained deep
+    learning model.  '''
+        
+     # Process image
+    img = process_image(args.i)
+   
+    if args.gpu:
+        img = img.type(torch.gpu.FloatTensor)
+    else:
+        img = img.type(torch.FloatTensor)
+    model_input = img.unsqueeze(0)
+    
+    # Probs
+    probs = torch.exp(model.forward(model_input))
+    
+    # Top probs
+    hi_probabilities, hi_probabilities_idx = probs.topk(args.top_k)
+    hi_probabilities = hi_probabilities.detach().numpy().tolist()[0] 
+    hi_probabilities_idx = hi_probabilities_idx.detach().numpy().tolist()[0]
+    
+    # Convert indices to classes
+    idx_to_class = {val: key for key, val in model.class_to_idx.items()}
+    
+    labels = [idx_to_class[idx] for idx in hi_probabilities_idx]
+    
+    flowers = [model.cat_to_name[idx_to_class[lab]] for lab in hi_probabilities_idx]
+    
+    return hi_probabilities, labels, flowers   
+
+
+
