@@ -172,13 +172,17 @@ def load_model(checkpoint_file):
                 'model_name': args.arch,
                 'hidden_units': args.hidden_units,
                 'output_units': num_of_fw_classes,
-                'class_to_idx': model.class_to_idx }
+                'cat_to_name': model.cat_to_name,
+                'class_to_idx': model.class_to_idx 
+                }
         torch.save(checkpoint_dict, saved_pth_file)
     ''' 
     checkpoint_dict = torch.load(checkpoint_file)
     model = getattr(models, checkpoint_dict['model_name'])(pretrained=True)
     model = change_classifier(model, checkpoint_dict) 
     model.load_state_dict(checkpoint_dict['weights'])
+    model.cat_to_name = checkpoint_dict['cat_to_name']
+    model.class_to_idx = checkpoint_dict['class_to_idx']
     return model
 
 def change_classifier(model, checkpoint_dict):

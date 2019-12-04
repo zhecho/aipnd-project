@@ -73,6 +73,7 @@ def main(args, logger):
         'model_name': args.arch,
         'hidden_units': args.hidden_units,
         'output_units': num_of_fw_classes,
+        'cat_to_name': cat_to_name,
         'class_to_idx': model.class_to_idx }
     model = change_classifier(model, checkpoint_dict)
 
@@ -93,6 +94,7 @@ def main(args, logger):
             'model_name': args.arch,
             'hidden_units': args.hidden_units,
             'output_units': num_of_fw_classes,
+            'cat_to_name': cat_to_name,
             'class_to_idx': model.class_to_idx }
     torch.save(checkpoint_dict, saved_pth_file)
 

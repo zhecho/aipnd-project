@@ -21,7 +21,7 @@ def main(args):
         python predict.py --gpu
     """
     # Create Model
-    model = create_model(args)
+    # model = create_model(args)
 
     # Label Mapping
     num_of_fw_classes, cat_to_name = label_map(args)
@@ -44,16 +44,15 @@ def main(args):
 
     # Adding class_to_idx in the model
     # Directory with images
-    data_dir = args.data_dir
-    train_dir = data_dir + 'train'
-    valid_dir = data_dir + 'valid'
-    test_dir = data_dir + 'test'
-
+    # data_dir = args.data_dir
+    # train_dir = data_dir + 'train'
+    # valid_dir = data_dir + 'valid'
+    # test_dir = data_dir + 'test'
     # Load Data & make Trainsformations
-    data = load_data(train_dir, valid_dir, test_dir, args.batch_size)
-    logger.info(f'Load Data from {train_dir}, {valid_dir}, {test_dir} ..done!')
-    model.class_to_idx = data['train_data'].class_to_idx
-    model.cat_to_name = cat_to_name
+    # data = load_data(train_dir, valid_dir, test_dir, args.batch_size)
+    # logger.info(f'Load Data from {train_dir}, {valid_dir}, {test_dir} ..done!')
+    # model.class_to_idx = data['train_data'].class_to_idx
+    # model.cat_to_name = cat_to_name
 
     # Prediction
     probs, labs, flowers = predict(args, model) 
@@ -74,18 +73,25 @@ if __name__ == '__main__':
     model_names = sorted(name for name in models.__dict__
         if name.islower() and not name.startswith("__")
         and callable(models.__dict__[name]))
+
+    supported_nets = list()
+    for net in model_names:
+        # Filter out only supported networks 
+        if net.startswith(('vgg','densenet','resnet','alexnet')):
+            supported_nets.append(net)
+
     # Configuration optinos
     parser = argparse.ArgumentParser(description='PyTorch Image Trainer')
     parser.add_argument('-i', metavar='PATH',
             help='path to image file', required=True),
-    parser.add_argument('data_dir', metavar='DIR', help='path to dataset')
+    # parser.add_argument('data_dir', metavar='DIR', help='path to dataset')
     parser.add_argument('--save_dir', default='./checkpoints',
             help='path to saved checkpoint dir')
     parser.add_argument('--category_names', default='./cat_to_name.json',
             help='File with class mapping')
     parser.add_argument('--arch', '-a', metavar='ARCH', default='vgg11',
-            choices=model_names, help='model architecture: ' + \
-                    ' | '.join(model_names) + ' (default: vgg11)')
+            choices=supported_nets, help='model architecture: ' + \
+                    ' | '.join(supported_nets) + ' (default: vgg11)')
     parser.add_argument('--top_k', default=5, type=int, metavar='N',
             help='top k classes ')
     parser.add_argument('--hidden_units', dest='hidden_units', type=int,
